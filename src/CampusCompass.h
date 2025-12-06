@@ -5,10 +5,6 @@
 #include <set>
 #include <utility> 
 #include <algorithm>
-#include <sstream>
-#include <stdexcept>
-#include <limits>
-#include <queue>
 
 using namespace std;
 
@@ -17,6 +13,7 @@ using namespace std;
 // Structure for hashing a pair of ints, used as a key for edges_metadata map
 struct EdgeKeyHash {
     size_t operator()(const pair<int,int>& p) const noexcept {
+        // Simple hash combination technique
         return std::hash<long long>()(((long long)p.first << 32) ^ (long long)p.second);
     }
 };
@@ -65,29 +62,19 @@ private:
     static bool validateName(const string &name);
     static bool validateUfid(const string &ufid);
     static bool validateClassCode(const string &code);
-    static string readQuotedString(stringstream& ss);
+    static vector<string> splitCsvLine(const string &line); 
     static int timeToMinutes(const string &hhmm);
 
-    // Graph Algorithms (Dijkstra's and Kruskal's)
+    // Graph Algorithms
     unordered_map<int,int> dijkstraDistances(int source) const;
     vector<int> dijkstraPathNodes(int source, int target, int &outDist) const;
-    int kruskalMSTCost(const vector<pair<int,pair<int,int>>>& edges) const;
-
-    // Command Handlers
-    bool handleInsert(stringstream& ss);
-    bool handleRemove(stringstream& ss);
-    bool handleDropClass(stringstream& ss);
-    bool handleReplaceClass(stringstream& ss);
-    bool handleRemoveClass(stringstream& ss);
-    bool handleToggleEdgesClosure(stringstream& ss);
-    bool handleCheckEdgeStatus(stringstream& ss);
-    bool handleIsConnected(stringstream& ss);
-    bool handlePrintShortestEdges(stringstream& ss);
-    bool handlePrintStudentZone(stringstream& ss);
-    bool handleVerifySchedule(stringstream& ss);
-
+    
+    // Kruskal's MST Helpers
+    vector<pair<int,pair<int,int>>> buildSubgraphEdgesForNodes(const set<int>& nodes) const;
+    int kruskalMSTCost(const vector<pair<int,pair<int,int>>>& edges, const vector<int>& nodeList) const;
+    
 public:
     CampusCompass();
-    bool parseCSV(const string &edgesPath, const string &classesPath);
-    bool parseCommand(const string &commandLine);
+    bool parseCSV(const string &edgesFilePath, const string &classesFilePath);
+    bool parseCommand(const string &command);
 };
