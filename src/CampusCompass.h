@@ -3,8 +3,17 @@
 #include <unordered_map>
 #include <vector>
 #include <set>
+#include <utility> // for std::pair
 
 using namespace std;
+
+// Hashing function for std::pair<int, int> used in edges_metadata
+struct EdgeKeyHash {
+    size_t operator()(const pair<int,int>&p) const noexcept {
+        // Simple hash combining the two integers
+        return std::hash<long long>()(((long long)p.first<<32) ^ (long long)p.second);
+    }
+};
 
 struct Edge {
     int to;
@@ -30,30 +39,35 @@ class CampusCompass {
 private:
     // graph adjacency list: node id -> list of edges
     unordered_map<int, vector<Edge>> graph;
-    // helper to find edge index pairs when toggling or checking status
-    // store undirected edges in a map keyed by ordered pair (min,max) to weight and closed
-    struct EdgeKeyHash {
-        size_t operator()(const pair<int,int>&p) const noexcept {
-            return std::hash<long long>()(((long long)p.first<<32) ^ (long long)p.second);
-        }
-    };
+    
+    // map (min_id, max_id) -> {weight, closed} for quick edge status lookup and modification
     unordered_map<pair<int,int>, pair<int,bool>, EdgeKeyHash> edges_metadata;
+    
     // map class code to ClassInfo
     unordered_map<string, ClassInfo> classes_map;
+    
     // map UFID to Student
     unordered_map<string, Student> students;
 
     // helpers
     bool LoadEdges(const string &filepath);
     bool LoadClasses(const string &filepath);
+    
     static bool ValidateName(const string &name);
     static bool ValidateUFID(const string &ufid);
     static bool ValidateClassCode(const string &code);
+    
     vector<int> DijkstraPathNodes(int source, int target, int &out_dist) const;
     unordered_map<int,int> DijkstraDistances(int source) const;
+    
     vector<pair<int,pair<int,int>>> BuildSubgraphEdgesForNodes(const set<int>& nodes) const;
     int KruskalMSTCost(int n_nodes, const vector<pair<int,pair<int,int>>>& edges, const vector<int>& node_list) const;
+    
     static int TimeToMinutes(const string &hhmm);
+    
+    // Utility for splitting CSV lines (defined in .cpp)
+    static vector<string> split_csv_line(const string &line); 
+
 public:
     CampusCompass();
     bool ParseCSV(const string &edges_filepath, const string &classes_filepath);
