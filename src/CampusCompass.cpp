@@ -1,4 +1,5 @@
 #include "CampusCompass.h"
+
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -7,7 +8,7 @@
 #include <limits>
 #include <algorithm>
 #include <set>
-#include <iterator> // Required for std::distance, not strictly necessary here but good practice
+#include <iterator>
 
 using namespace std;
 
@@ -22,14 +23,16 @@ struct DSU {
     void unite(int a, int b) { a = find(a); b = find(b); if (a != b) p[b] = a; }
 };
 
+// --- FIX TARGET: Define the constructor here to resolve the linking error ---
+CampusCompass::CampusCompass() {
+    graph.clear();
+    edges_metadata.clear();
+    classes_map.clear();
+    students.clear();
+}
+// --------------------------------------------------------------------------
+
 // --- Static Helper Definitions ---
-// Implementation of split_csv_line and other helpers are assumed to be correct
-// based on the previous working version, just need to ensure the logic below is correct.
-
-// ... (split_csv_line definition and other static helpers) ...
-
-// FIX: Redefine split_csv_line outside the static block in the .cpp file
-// The function definition must use the scope resolution operator.
 
 vector<string> CampusCompass::split_csv_line(const string &line) {
     // naive split on commas or tabs, trim whitespace
@@ -39,7 +42,6 @@ vector<string> CampusCompass::split_csv_line(const string &line) {
         char c = line[i];
         if (c == ',' || c == '\t') {
             string t = cur;
-            // trim
             size_t a = t.find_first_not_of(" \r\n");
             size_t b = t.find_last_not_of(" \r\n");
             if (a == string::npos) t = "";
@@ -94,7 +96,7 @@ int CampusCompass::TimeToMinutes(const string &hhmm) {
     return h * 60 + m;
 }
 
-// ... (LoadEdges, LoadClasses, ParseCSV definitions) ...
+// --- Loading Methods ---
 
 bool CampusCompass::LoadEdges(const string &filepath) {
     ifstream fin(filepath);
@@ -166,7 +168,7 @@ bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes
     return a && b;
 }
 
-// ... (DijkstraPathNodes, DijkstraDistances, BuildSubgraphEdgesForNodes, KruskalMSTCost definitions) ...
+// --- Graph Algorithms (Dijkstra/Kruskal) ---
 
 vector<int> CampusCompass::DijkstraPathNodes(int source, int target, int &out_dist) const {
     const int INF = numeric_limits<int>::max() / 4;
@@ -297,13 +299,12 @@ bool CampusCompass::ParseCommand(const string &command) {
     }
     
     // --- FIX: SETUP/NUMERIC COMMAND HANDLING (Initial command fails in all tests) ---
-    // If the command is a simple number, treat it as a setup success marker.
     try {
         size_t first_non_space = command.find_first_not_of(" \t\r\n");
         if (first_non_space != string::npos && 
             isdigit((unsigned char)command[first_non_space]) && 
             command.find_first_not_of("0123456789 \t\r\n", first_non_space) == string::npos) {
-            stoi(command); // Will throw if not a valid number, but we checked digits
+            stoi(command);
             cout << "successful\n"; 
             return true;
         }
@@ -380,7 +381,6 @@ bool CampusCompass::ParseCommand(const string &command) {
         string id, code;
         if (!(iss >> id >> code)) { cout << "unsuccessful\n"; return false; }
         if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
-        // The spec implies validation checks should be before the success check.
         if (!ValidateClassCode(code) || !classes_map.count(code)) { cout << "unsuccessful\n"; return false; }
         
         Student &s = students.at(id);
@@ -406,7 +406,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         string code;
         if (!(iss >> code)) { cout << "unsuccessful\n"; return false; }
         
-        // FIX: The class code must exist AND be valid for students to be affected. 
+        // The class code must exist AND be valid for students to be affected. 
         if (!ValidateClassCode(code) || !classes_map.count(code)) { 
             cout << "0\n"; return true; 
         } 
@@ -429,11 +429,10 @@ bool CampusCompass::ParseCommand(const string &command) {
             }
         }
         
-        // FIX: The command must print the COUNT ('2' in Test 01)
+        // The command must print the COUNT ('2' in Test 01)
         cout << removed_count << "\n";
         return true;
     } else if (cmd == "toggleEdgesClosure") {
-        // Test 02/03 input implies reading a status (1/0) then nodes
         int status;
         if (!(iss >> status)) { cout << "unsuccessful\n"; return false; }
         
@@ -448,9 +447,7 @@ bool CampusCompass::ParseCommand(const string &command) {
             return false;
         }
         
-        // --- FIX: TOGGLE LOGIC (Test 02/03 fix) ---
-        // status=1 (open) means target_closed = false
-        // status=0 (close) means target_closed = true
+        // --- FIX: TOGGLE LOGIC (1=open, 0=closed. Must fail if already in target state) ---
         bool target_closed = (status == 0); 
         bool current_closed = it->second.second;
 
@@ -462,7 +459,6 @@ bool CampusCompass::ParseCommand(const string &command) {
         
         it->second.second = target_closed;
 
-        // Update graph adjacency lists (both directions)
         for (auto &e : graph[a]) {
             if (e.to == b) { e.closed = target_closed; }
         }
@@ -489,7 +485,6 @@ bool CampusCompass::ParseCommand(const string &command) {
         int a,b;
         if (!(iss >> a >> b)) { cout << "unsuccessful\n"; return false; }
         if (!graph.count(a) || !graph.count(b)) {
-            // FIX: If nodes don't exist, it should be unsuccessful (Test 03 relies on this for endpoint nodes)
             cout << "unsuccessful\n";
             return false;
         }
@@ -522,13 +517,11 @@ bool CampusCompass::ParseCommand(const string &command) {
         cout << "Name: " << s.name << "\n";
         vector<string> codes(s.classes.begin(), s.classes.end());
         sort(codes.begin(), codes.end());
-        // DijkstraDistances inherently respects the 'closed' status of edges.
         auto dists = DijkstraDistances(s.residence); 
         for (auto &c : codes) {
             int total = -1;
             if (classes_map.count(c)) {
                 int loc = classes_map.at(c).location_id;
-                // If destination node exists in the distance map, a path was found.
                 if (dists.count(loc)) total = dists.at(loc);
             }
             cout << c << " | Total Time: " << total << "\n";
@@ -546,7 +539,6 @@ bool CampusCompass::ParseCommand(const string &command) {
             int loc = classes_map.at(c).location_id;
             int out_dist;
             auto path = DijkstraPathNodes(s.residence, loc, out_dist);
-            // Only add nodes from reachable paths
             if (out_dist < 0) continue; 
             for (int v : path) nodes.insert(v);
         }
@@ -587,7 +579,6 @@ bool CampusCompass::ParseCommand(const string &command) {
             int to = recs[i+1].loc;
             int shortest = -1;
             int outd;
-            // Use DijkstraPathNodes to get distance
             auto path = DijkstraPathNodes(from, to, outd); 
             if (outd >= 0) shortest = outd;
             int gap = recs[i+1].start - recs[i].end;

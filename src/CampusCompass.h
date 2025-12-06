@@ -3,14 +3,13 @@
 #include <unordered_map>
 #include <vector>
 #include <set>
-#include <utility> // for std::pair
+#include <utility> 
 
 using namespace std;
 
 // Hashing function for std::pair<int, int> used in edges_metadata
 struct EdgeKeyHash {
     size_t operator()(const pair<int,int>&p) const noexcept {
-        // Simple hash combining the two integers
         return std::hash<long long>()(((long long)p.first<<32) ^ (long long)p.second);
     }
 };
@@ -65,10 +64,10 @@ private:
     
     static int TimeToMinutes(const string &hhmm);
     
-    // FIX FOR LINKER ERROR: Declare as a static member function
     static vector<string> split_csv_line(const string &line); 
 
 public:
+    // FIX TARGET: Constructor is declared here
     CampusCompass();
     bool ParseCSV(const string &edges_filepath, const string &classes_filepath);
     bool ParseCommand(const string &command);
