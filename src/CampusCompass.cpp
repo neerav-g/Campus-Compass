@@ -363,6 +363,13 @@ bool CampusCompass::parseCommand(const string &command) {
             cout << "unsuccessful\n"; 
             return false; 
         }
+        
+        // --- CORRECTED LOGIC: Check if Residence ID is a valid node in the graph ---
+        if (!graph.count(residence)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+        // -------------------------------------------------------------------------
 
         vector<string> classList;
         string code;
@@ -715,7 +722,7 @@ bool CampusCompass::parseCommand(const string &command) {
         cout << "Schedule Check for " << s.name << ":\n";
         
         for (size_t i = 0; i + 1 < records.size(); ++i) {
-            int from = records[i].loc; 
+            int from = records[i].loc;
             int to = records[i+1].loc;
             int shortestTime = -1;
             int outDist;
