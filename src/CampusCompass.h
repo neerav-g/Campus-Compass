@@ -72,7 +72,7 @@ private:
     static int TimeToMinutes(const string &hhmm);
 
 public:
-    CampusCompass(); // Constructor
+    CampusCompass(); // Constructor (Crucial for linking!)
     bool ParseCSV(const string &edges_filepath, const string &classes_filepath);
     bool ParseCommand(const string &command);
 };
