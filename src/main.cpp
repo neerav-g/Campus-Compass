@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <string> // Ensure string is included
 
 using namespace std;
 
@@ -19,15 +20,20 @@ int main() {
         cerr << "Warning: Could not load required CSV files. Proceeding with potentially incomplete data." << endl;
     }
 
-    // Line 1: Read the total number of commands.
+    // --- CRITICAL FIX START ---
+    // Read the total number of commands line but DO NOT process it as a command
+    // This prevents the extraneous "successful" output in the test environment.
     string line_count_str;
     if (getline(cin, line_count_str)) {
-        cc.ParseCommand(line_count_str);
+        // The line is read (e.g., "6" is in line_count_str), but we do nothing with it.
     } else {
+        // No input detected
         return 0;
     }
+    // --- CRITICAL FIX END ---
 
     // 2. Command Parsing Loop
+    // The loop begins processing the *first actual command* (e.g., "insert...")
     string command;
     while (getline(cin, command)) {
         if (!command.empty()) {
