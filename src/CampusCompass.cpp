@@ -1,5 +1,4 @@
 #include "CampusCompass.h"
-
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -12,30 +11,28 @@
 
 using namespace std;
 
-// --- DSU Structure for Kruskal's Algorithm ---
+// --- DSU Structure for Kruskal's Algorithm (MST) ---
 struct DSU {
     unordered_map<int,int> p;
     int find(int x) {
         if (!p.count(x)) p[x] = x;
         if (p[x] == x) return x;
-        return p[x] = find(p[x]);
+        return p[x] = find(p[x]); // Path compression
     }
     void unite(int a, int b) { a = find(a); b = find(b); if (a != b) p[b] = a; }
 };
 
-// --- FIX TARGET: Define the constructor here to resolve the linking error ---
+// --- FIX: Define the constructor to resolve the linking error ---
 CampusCompass::CampusCompass() {
     graph.clear();
     edges_metadata.clear();
     classes_map.clear();
     students.clear();
 }
-// --------------------------------------------------------------------------
 
 // --- Static Helper Definitions ---
 
 vector<string> CampusCompass::split_csv_line(const string &line) {
-    // naive split on commas or tabs, trim whitespace
     vector<string> out;
     string cur;
     for (size_t i = 0; i < line.size(); ++i) {
@@ -179,6 +176,9 @@ vector<int> CampusCompass::DijkstraPathNodes(int source, int target, int &out_di
     priority_queue<Node, vector<Node>, Cmp> pq;
     dist[source] = 0;
     pq.push({source, 0});
+    
+    // 
+
     while (!pq.empty()) {
         auto cur = pq.top(); pq.pop();
         int u = cur.id;
@@ -190,7 +190,7 @@ vector<int> CampusCompass::DijkstraPathNodes(int source, int target, int &out_di
         if (it == graph.end()) continue;
         
         for (const Edge &e : it->second) {
-            if (e.closed) continue;
+            if (e.closed) continue; // Skip closed edges
             int v = e.to;
             int nd = d + e.weight;
             if (!dist.count(v) || nd < dist.at(v)) {
@@ -234,7 +234,7 @@ unordered_map<int,int> CampusCompass::DijkstraDistances(int source) const {
         if (it == graph.end()) continue;
         
         for (const Edge &e : it->second) {
-            if (e.closed) continue;
+            if (e.closed) continue; // Skip closed edges
             int v = e.to;
             int nd = d + e.weight;
             if (!dist.count(v) || nd < dist.at(v)) {
@@ -253,7 +253,7 @@ vector<pair<int,pair<int,int>>> CampusCompass::BuildSubgraphEdgesForNodes(const 
         int v = kv.first.second;
         int w = kv.second.first;
         bool closed = kv.second.second;
-        if (closed) continue;
+        if (closed) continue; // Skip closed edges
         if (nodes.count(u) && nodes.count(v)) {
             out.push_back({w, {u, v}});
         }
@@ -263,6 +263,7 @@ vector<pair<int,pair<int,int>>> CampusCompass::BuildSubgraphEdgesForNodes(const 
 
 int CampusCompass::KruskalMSTCost(int n_nodes, const vector<pair<int,pair<int,int>>>& edges, const vector<int>& node_list) const {
     vector<pair<int,pair<int,int>>> es = edges;
+    // Sort edges by weight
     sort(es.begin(), es.end(),
         [](const pair<int, pair<int, int>>& a,
            const pair<int, pair<int, int>>& b) {
@@ -284,7 +285,7 @@ int CampusCompass::KruskalMSTCost(int n_nodes, const vector<pair<int,pair<int,in
             dsu.unite(u, v);
             cost += w;
             comps--;
-            if (comps == 1) break;
+            if (comps == 1) break; // MST complete
         }
     }
     return cost;
@@ -298,7 +299,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return false;
     }
     
-    // --- FIX: SETUP/NUMERIC COMMAND HANDLING (Initial command fails in all tests) ---
+    // FIX: SETUP/NUMERIC COMMAND HANDLING
     try {
         size_t first_non_space = command.find_first_not_of(" \t\r\n");
         if (first_non_space != string::npos && 
@@ -308,9 +309,7 @@ bool CampusCompass::ParseCommand(const string &command) {
             cout << "successful\n"; 
             return true;
         }
-    } catch (...) {
-        // Not a simple number, proceed to command parsing
-    }
+    } catch (...) {}
     
     istringstream iss(command);
     string cmd;
@@ -321,33 +320,21 @@ bool CampusCompass::ParseCommand(const string &command) {
         size_t q1 = rest.find('"');
         size_t q2 = string::npos;
         if (q1 != string::npos) q2 = rest.find('"', q1+1);
-        if (q1 == string::npos || q2 == string::npos) {
-            cout << "unsuccessful\n"; return false;
-        }
+        if (q1 == string::npos || q2 == string::npos) { cout << "unsuccessful\n"; return false; }
         string name = rest.substr(q1+1, q2 - q1 - 1);
         string after = rest.substr(q2+1);
         istringstream aiss(after);
         string ufid; int residence; int nclasses;
-        if (!(aiss >> ufid >> residence >> nclasses)) {
-            cout << "unsuccessful\n"; return false;
-        }
-        if (!ValidateName(name) || !ValidateUFID(ufid) || nclasses < 1 || nclasses > 6) {
-            cout << "unsuccessful\n"; return false;
-        }
+        if (!(aiss >> ufid >> residence >> nclasses)) { cout << "unsuccessful\n"; return false; }
+        if (!ValidateName(name) || !ValidateUFID(ufid) || nclasses < 1 || nclasses > 6) { cout << "unsuccessful\n"; return false; }
         vector<string> classlist;
         string code;
         for (int i = 0; i < nclasses; ++i) {
-            if (!(aiss >> code)) {
-                cout << "unsuccessful\n"; return false;
-            }
-            if (!ValidateClassCode(code) || !classes_map.count(code)) {
-                cout << "unsuccessful\n"; return false;
-            }
+            if (!(aiss >> code)) { cout << "unsuccessful\n"; return false; }
+            if (!ValidateClassCode(code) || !classes_map.count(code)) { cout << "unsuccessful\n"; return false; }
             classlist.push_back(code);
         }
-        if (students.count(ufid)) {
-            cout << "unsuccessful\n"; return false;
-        }
+        if (students.count(ufid)) { cout << "unsuccessful\n"; return false; }
         Student s;
         s.name = name;
         s.ufid = ufid;
@@ -360,32 +347,35 @@ bool CampusCompass::ParseCommand(const string &command) {
         string id;
         if (!(iss >> id)) { cout << "unsuccessful\n"; return false; }
         
-        // --- FIX: REMOVE LOGIC (Test 01 expects unsuccessful if classes > 0, successful if classes == 0) ---
+        // FIX: REMOVE LOGIC: Must only succeed if the student exists AND has 0 classes.
         if (students.count(id)) { 
             if (students.at(id).classes.empty()) {
-                // Student exists and has 0 classes -> successful removal
                 students.erase(id);
                 cout << "successful\n";
                 return true;
             } else {
-                // Student exists but has > 0 classes -> unsuccessful
-                cout << "unsuccessful\n";
+                cout << "unsuccessful\n"; // Student has classes
                 return false;
             }
         } else {
-            // Student DNE -> unsuccessful
-            cout << "unsuccessful\n"; 
+            cout << "unsuccessful\n"; // Student DNE
             return false;
         }
     } else if (cmd == "dropClass") {
         string id, code;
         if (!(iss >> id >> code)) { cout << "unsuccessful\n"; return false; }
-        if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
-        if (!ValidateClassCode(code) || !classes_map.count(code)) { cout << "unsuccessful\n"; return false; }
+        if (!students.count(id) || !ValidateClassCode(code) || !classes_map.count(code)) { cout << "unsuccessful\n"; return false; }
         
         Student &s = students.at(id);
         if (!s.classes.count(code)) { cout << "unsuccessful\n"; return false; }
+        
         s.classes.erase(code);
+        
+        // Note: The student should be removed if their class list becomes empty ONLY when removeClass is called. 
+        // For dropClass, the spec says: "If we remove a CLASSCODE from a student with only that CLASSCODE, the student has 0 classes and should be dropped from the data structure. Still prints “successful” in this case"
+        if (s.classes.empty()) {
+            students.erase(id);
+        }
         
         cout << "successful\n";
         return true;
@@ -406,7 +396,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         string code;
         if (!(iss >> code)) { cout << "unsuccessful\n"; return false; }
         
-        // The class code must exist AND be valid for students to be affected. 
+        // Check validity, but still print 0 if invalid (as per previous logic for Test 01)
         if (!ValidateClassCode(code) || !classes_map.count(code)) { 
             cout << "0\n"; return true; 
         } 
@@ -418,9 +408,9 @@ bool CampusCompass::ParseCommand(const string &command) {
             if (s.classes.count(code)) {
                 removed_count++;
                 s.classes.erase(code);
-                // If a student's class list becomes empty, they are removed from the system.
+                // FIX: If a student's class list becomes empty, they are removed from the system.
                 if (s.classes.empty()) {
-                    it = students.erase(it); // Erase and advance iterator
+                    it = students.erase(it);
                 } else {
                     ++it;
                 }
@@ -429,8 +419,7 @@ bool CampusCompass::ParseCommand(const string &command) {
             }
         }
         
-        // The command must print the COUNT ('2' in Test 01)
-        cout << removed_count << "\n";
+        cout << removed_count << "\n"; // Prints the count (e.g., '2' in Test 01)
         return true;
     } else if (cmd == "toggleEdgesClosure") {
         int status;
@@ -447,24 +436,20 @@ bool CampusCompass::ParseCommand(const string &command) {
             return false;
         }
         
-        // --- FIX: TOGGLE LOGIC (1=open, 0=closed. Must fail if already in target state) ---
+        // FIX: TOGGLE LOGIC (1=open (false), 0=closed (true))
         bool target_closed = (status == 0); 
         bool current_closed = it->second.second;
 
-        // If edge is already in the target state, return unsuccessful
         if (current_closed == target_closed) {
-            cout << "unsuccessful\n";
+            cout << "unsuccessful\n"; // Already in target state
             return false;
         }
         
         it->second.second = target_closed;
 
-        for (auto &e : graph[a]) {
-            if (e.to == b) { e.closed = target_closed; }
-        }
-        for (auto &e : graph[b]) {
-            if (e.to == a) { e.closed = target_closed; }
-        }
+        // Update graph adjacency lists
+        for (auto &e : graph[a]) { if (e.to == b) { e.closed = target_closed; } }
+        for (auto &e : graph[b]) { if (e.to == a) { e.closed = target_closed; } }
         
         cout << "successful\n";
         return true;
@@ -500,7 +485,7 @@ bool CampusCompass::ParseCommand(const string &command) {
             if (it == graph.end()) continue;
 
             for (auto &e : it->second) {
-                if (e.closed) continue;
+                if (e.closed) continue; // Skip closed edges
                 if (!visited.count(e.to)) {
                     visited.insert(e.to);
                     q.push(e.to);
@@ -516,7 +501,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         Student &s = students.at(id);
         cout << "Name: " << s.name << "\n";
         vector<string> codes(s.classes.begin(), s.classes.end());
-        sort(codes.begin(), codes.end());
+        sort(codes.begin(), codes.end()); // Sort lexicographically
         auto dists = DijkstraDistances(s.residence); 
         for (auto &c : codes) {
             int total = -1;
@@ -539,7 +524,7 @@ bool CampusCompass::ParseCommand(const string &command) {
             int loc = classes_map.at(c).location_id;
             int out_dist;
             auto path = DijkstraPathNodes(s.residence, loc, out_dist);
-            if (out_dist < 0) continue; 
+            if (out_dist < 0) continue; // Unreachable class location
             for (int v : path) nodes.insert(v);
         }
         nodes.insert(s.residence);
@@ -558,7 +543,10 @@ bool CampusCompass::ParseCommand(const string &command) {
         if (!(iss >> id)) { cout << "unsuccessful\n"; return false; }
         if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
         Student &s = students.at(id);
+        
+        // EC: If student has only 1 class, print "unsuccessful"
         if (s.classes.size() <= 1) { cout << "unsuccessful\n"; return true; }
+
         struct CRec { string code; int start; int end; int loc; };
         vector<CRec> recs;
         for (auto &c : s.classes) {
@@ -566,29 +554,39 @@ bool CampusCompass::ParseCommand(const string &command) {
             ClassInfo ci = classes_map.at(c);
             int st = TimeToMinutes(ci.start_time);
             int en = TimeToMinutes(ci.end_time);
+            // Skip classes with invalid times (e.g., if TimeToMinutes returns -1)
+            if (st < 0 || en < 0) continue; 
             recs.push_back({c, st, en, ci.location_id});
         }
+        
+        // Sort by earliest start time
         sort(recs.begin(), recs.end(), [](const CRec&a,const CRec&b){
             return a.start < b.start;
         });
+        
+        // Re-check size after potential invalid time filter
+        if (recs.size() <= 1) { cout << "unsuccessful\n"; return true; }
+
         cout << "Schedule Check for " << s.name << ":\n";
-        bool any = false;
+        
         for (size_t i = 0; i + 1 < recs.size(); ++i) {
-            any = true;
             int from = recs[i].loc;
             int to = recs[i+1].loc;
             int shortest = -1;
             int outd;
+            
+            // Use DijkstraPathNodes to get distance using *available* edges
             auto path = DijkstraPathNodes(from, to, outd); 
             if (outd >= 0) shortest = outd;
+            
             int gap = recs[i+1].start - recs[i].end;
+            
             if (shortest <= gap && shortest >= 0) {
                 cout << recs[i].code << " - " << recs[i+1].code << " \"Can make it!\"\n";
             } else {
                 cout << recs[i].code << " - " << recs[i+1].code << " \"Cannot make it!\"\n";
             }
         }
-        if (!any) cout << "unsuccessful\n";
         return true;
     } else {
         cout << "unsuccessful\n";
