@@ -715,7 +715,7 @@ bool CampusCompass::parseCommand(const string &command) {
         cout << "Schedule Check for " << s.name << ":\n";
         
         for (size_t i = 0; i + 1 < records.size(); ++i) {
-            int from = records[i].loc;
+            int from = records[i].loc; 
             int to = records[i+1].loc;
             int shortestTime = -1;
             int outDist;
