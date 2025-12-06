@@ -1,13 +1,9 @@
 #include "CampusCompass.h"
 #include <fstream>
-#include <sstream>
 #include <iostream>
-#include <regex>
-#include <queue>
-#include <limits>
 #include <algorithm>
+#include <queue>
 #include <set>
-#include <iterator>
 
 using namespace std;
 
@@ -24,723 +20,651 @@ struct DSU {
     void unite(int a, int b) { 
         a = find(a); 
         b = find(b); 
-        if (a != b) p[b] = a; 
+        if (a != b) p[a] = b; 
     }
 };
 
 // --- Constructor ---
-CampusCompass::CampusCompass() {
-    graph.clear();
-    edgesMetadata.clear();
-    classesMap.clear();
-    students.clear();
-}
+CampusCompass::CampusCompass() {}
 
-// --- Static Helper Definitions ---
+// --- Static Helper Definitions (Validation & Utilities) ---
 
-vector<string> CampusCompass::splitCsvLine(const string &line) {
-    // Custom logic to handle CSV/TSV lines and whitespace trimming
-    vector<string> out;
-    string cur;
-    for (size_t i = 0; i < line.size(); ++i) {
-        char c = line[i];
-        if (c == ',' || c == '\t') {
-            string t = cur;
-            size_t a = t.find_first_not_of(" \r\n");
-            size_t b = t.find_last_not_of(" \r\n");
-            if (a == string::npos) t = "";
-            else t = t.substr(a, b - a + 1);
-            out.push_back(t);
-            cur.clear();
-        } else {
-            cur.push_back(c);
-        }
-    }
-    // Handle the last field
-    string t = cur;
-    size_t a = t.find_first_not_of(" \r\n");
-    size_t b = t.find_last_not_of(" \r\n");
-    if (a == string::npos) t = "";
-    else t = t.substr(a, b - a + 1);
-    out.push_back(t);
-    return out;
-}
-
-// FIX: Enhanced Name Validation (Test 1 fix)
 bool CampusCompass::validateName(const string &name) {
     if (name.empty()) return false;
     for (char c : name) {
-        // Strictly allow only letters and spaces.
-        if (!(isalpha((unsigned char)c) || c == ' ')) return false;
+        if (!isalpha(c) && c != ' ') return false;
     }
     return true;
 }
 
 bool CampusCompass::validateUfid(const string &ufid) {
-    if (ufid.size() != 8) return false;
-    for (char c : ufid) if (!isdigit((unsigned char)c)) return false;
+    if (ufid.length() != 8) return false;
+    for (char c : ufid) {
+        if (!isdigit(c)) return false;
+    }
     return true;
 }
 
 bool CampusCompass::validateClassCode(const string &code) {
-    if (code.size() != 7) return false;
-    for (int i = 0; i < 3; ++i) if (!isupper((unsigned char)code[i])) return false;
-    for (int i = 3; i < 7; ++i) if (!isdigit((unsigned char)code[i])) return false;
+    if (code.length() != 7) return false;
+    for (int i = 0; i < 3; ++i) {
+        if (!isupper(code[i])) return false;
+    }
+    for (int i = 3; i < 7; ++i) {
+        if (!isdigit(code[i])) return false;
+    }
     return true;
 }
 
+// Custom function to read quoted string (for Name) or single token
+string CampusCompass::readQuotedString(stringstream& ss) {
+    string token;
+    ss >> ws; // Consume leading whitespace
+    if (ss.peek() == '"') {
+        ss.get(); // Consume opening quote
+        // Use a temporary string for extraction to handle potential quotes inside token
+        getline(ss, token, '"'); 
+        if (ss.fail()) return ""; // Failed to read up to closing quote
+        return token;
+    }
+    // For non-quoted tokens (like commands or IDs), read the next single word
+    ss >> token;
+    return token;
+}
+
+// Time conversion: "HH:MM" to total minutes from midnight
 int CampusCompass::timeToMinutes(const string &hhmm) {
-    if (hhmm.size() < 4) return -1;
-    int h = 0, m = 0;
+    if (hhmm.length() != 5 || hhmm[2] != ':') return -1;
     try {
-        string sh = hhmm.substr(0, hhmm.find(':'));
-        string sm = hhmm.substr(hhmm.find(':')+1);
-        h = stoi(sh);
-        m = stoi(sm);
+        int hour = stoi(hhmm.substr(0, 2));
+        int minute = stoi(hhmm.substr(3, 2));
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return -1;
+        return hour * 60 + minute;
     } catch (...) {
         return -1;
     }
-    return h * 60 + m;
 }
 
-// --- Loading Methods ---
+// --- Data Loading Methods ---
 
 bool CampusCompass::loadEdges(const string &filePath) {
-    ifstream fin(filePath);
-    if (!fin.is_open()) return false;
+    ifstream file(filePath);
+    if (!file.is_open()) return false;
+
     string line;
-    while (getline(fin, line)) {
-        if (line.find_first_not_of(" \t\r\n") == string::npos) continue;
+    getline(file, line); // Skip header
+
+    while (getline(file, line)) {
+        if (line.empty()) continue;
+
+        stringstream ss(line);
+        int id1, id2, time;
+        string name1, name2, temp;
         
-        auto parts = splitCsvLine(line);
-        if (parts.size() < 5) continue;
+        // Read ID1, ID2, and attempt to read the rest
+        if (!(ss >> id1 >> id2)) continue;
+
+        // Skip Name1, Name2, and read Time
+        // The file format is irregular, so we skip the strings and grab the last int (Time)
+        string remaining_tokens;
+        getline(ss, remaining_tokens);
         
-        int id1 = 0, id2 = 0, time = 0;
+        stringstream ss_time(remaining_tokens);
+        vector<string> tokens;
+        string token;
+        while (ss_time >> token) {
+            tokens.push_back(token);
+        }
+        
+        if (tokens.empty()) continue;
+        
+        // Assume Time is the last token and is an integer
         try {
-            id1 = stoi(parts[0]);
-            id2 = stoi(parts[1]);
-            time = stoi(parts.back());
+            time = stoi(tokens.back());
         } catch (...) {
             continue;
         }
-        
-        if (parts[0] == "LocationID_1" || id1 == 0 || id2 == 0) continue;
 
-        graph[id1].push_back(Edge(id2, time, false));
-        graph[id2].push_back(Edge(id1, time, false));
-        
-        int a = min(id1, id2);
-        int b = max(id1, id2);
-        edgesMetadata[{a,b}] = {time, false};
+        if (time <= 0) continue; 
+
+        // Store edge (undirected)
+        graph[id1].emplace_back(id2, time, false);
+        graph[id2].emplace_back(id1, time, false);
+
+        // Store canonical edge key (min_id, max_id) for metadata
+        int u = min(id1, id2);
+        int v = max(id1, id2);
+        edgesMetadata[{u, v}] = {time, false};
     }
     return true;
 }
 
 bool CampusCompass::loadClasses(const string &filePath) {
-    ifstream fin(filePath);
-    if (!fin.is_open()) return false;
+    ifstream file(filePath);
+    if (!file.is_open()) return false;
+
     string line;
-    while (getline(fin, line)) {
-        if (line.find_first_not_of(" \t\r\n") == string::npos) continue;
+    getline(file, line); // Skip header
+
+    while (getline(file, line)) {
+        if (line.empty()) continue;
+
+        stringstream ss(line);
+        string code, start, end;
+        int locId;
         
-        auto parts = splitCsvLine(line);
-        if (parts.size() < 2) continue;
+        // Assuming CSV structure: ClassCode, LocationID, Start Time, End Time
+        if (!getline(ss, code, ',') || !(ss >> locId)) continue;
+        ss.ignore(1); // Consume space after ID
+        if (!getline(ss, start, ',') || !getline(ss, end)) continue;
         
-        string code = parts[0];
-        if (code == "ClassCode" || code.empty()) continue;
-        
-        int loc = 0;
-        try {
-            loc = stoi(parts[1]);
-        } catch (...) {
-            continue;
-        }
-        
-        ClassInfo ci;
-        ci.locationId = loc;
-        if (parts.size() >= 4) {
-            ci.startTime = parts[2];
-            ci.endTime = parts[3];
-        } else {
-            ci.startTime = "";
-            ci.endTime = "";
-        }
-        classesMap[code] = ci;
+        // Clean up any trailing whitespace from tokens
+        start.erase(remove_if(start.begin(), start.end(), ::isspace), start.end());
+        end.erase(remove_if(end.begin(), end.end(), ::isspace), end.end());
+
+        if (!validateClassCode(code)) continue;
+
+        classesMap[code] = {locId, start, end};
     }
     return true;
 }
 
-bool CampusCompass::parseCSV(const string &edgesFilePath, const string &classesFilePath) {
-    bool a = loadEdges(edgesFilePath);
-    bool b = loadClasses(classesFilePath);
-    return a && b;
+bool CampusCompass::parseCSV(const string &edgesPath, const string &classesPath) {
+    bool edgesSuccess = loadEdges(edgesPath);
+    bool classesSuccess = loadClasses(classesPath);
+    return edgesSuccess && classesSuccess;
 }
 
 // --- Graph Algorithms ---
 
-vector<int> CampusCompass::dijkstraPathNodes(int source, int target, int &outDist) const {
-    unordered_map<int,int> dist;
-    unordered_map<int,int> prev;
-    struct Node { int id; int d; };
-    struct Cmp { bool operator()(const Node&a, const Node&b) const { return a.d > b.d; } };
-    priority_queue<Node, vector<Node>, Cmp> pq;
+// Dijkstra's: Computes shortest distance from source to all other nodes
+unordered_map<int,int> CampusCompass::dijkstraDistances(int source) const {
+    // Min-heap: {distance, node}
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<pair<int, int>>> pq;
+    unordered_map<int, int> dist;
+    
+    // Initialize dist map with infinity for all nodes in the graph
+    for (auto const& [id, edges] : graph) dist[id] = numeric_limits<int>::max();
+    if (dist.find(source) == dist.end()) return {}; 
     
     dist[source] = 0;
-    pq.push({source, 0});
-    
+    pq.push({0, source});
+
     while (!pq.empty()) {
-        auto cur = pq.top(); pq.pop();
-        int u = cur.id;
-        int d = cur.d;
-        
-        if (dist.count(u) && d > dist.at(u)) continue;
-        if (u == target) break;
-        
-        auto it = graph.find(u);
-        if (it == graph.end()) continue;
-        
-        for (const Edge &e : it->second) {
-            if (e.closed) continue; // Skip closed edges
-            int v = e.to;
-            int newDist = d + e.weight;
-            if (!dist.count(v) || newDist < dist.at(v)) {
-                dist[v] = newDist;
-                prev[v] = u;
-                pq.push({v, newDist});
+        int d = pq.top().first;
+        int u = pq.top().second;
+        pq.pop();
+
+        if (d > dist[u]) continue;
+
+        if (graph.count(u)) {
+            for (const auto& edge : graph.at(u)) {
+                if (edge.closed) continue; // Skip closed edges
+
+                int v = edge.to;
+                int weight = edge.weight;
+
+                if (dist.count(v) && dist[u] + weight < dist[v]) {
+                    dist[v] = dist[u] + weight;
+                    pq.push({dist[v], v});
+                }
             }
         }
     }
     
-    if (!dist.count(target)) {
-        outDist = -1;
-        return {};
+    // Filter out unreachable nodes
+    unordered_map<int, int> result;
+    for (auto const& [id, d] : dist) {
+        if (d != numeric_limits<int>::max()) {
+            result[id] = d;
+        }
+    }
+    return result;
+}
+
+// Dijkstra's: Computes shortest path nodes and total distance between source and target
+vector<int> CampusCompass::dijkstraPathNodes(int source, int target, int &outDist) const {
+    outDist = -1;
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<pair<int, int>>> pq;
+    unordered_map<int, int> dist;
+    unordered_map<int, int> prev;
+    
+    for (auto const& [id, edges] : graph) dist[id] = numeric_limits<int>::max();
+
+    if (dist.find(source) == dist.end() || dist.find(target) == dist.end()) return {};
+    
+    dist[source] = 0;
+    pq.push({0, source});
+
+    while (!pq.empty()) {
+        int d = pq.top().first;
+        int u = pq.top().second;
+        pq.pop();
+
+        if (d > dist[u]) continue;
+        if (u == target) {
+            outDist = d;
+            break; 
+        }
+
+        if (graph.count(u)) {
+            for (const auto& edge : graph.at(u)) {
+                if (edge.closed) continue; 
+
+                int v = edge.to;
+                int weight = edge.weight;
+
+                if (dist.count(v) && dist[u] + weight < dist[v]) {
+                    dist[v] = dist[u] + weight;
+                    prev[v] = u;
+                    pq.push({dist[v], v});
+                }
+            }
+        }
     }
     
-    outDist = dist.at(target);
     vector<int> path;
-    int cur = target;
-    while (true) {
-        path.push_back(cur);
-        if (cur == source) break;
-        if (!prev.count(cur)) { outDist = -1; return {}; }
-        cur = prev[cur];
+    if (outDist != -1) {
+        int curr = target;
+        while (curr != source) {
+            path.push_back(curr);
+            if (!prev.count(curr)) { 
+                path.clear(); outDist = -1; return path; 
+            }
+            curr = prev.at(curr);
+        }
+        path.push_back(source);
+        reverse(path.begin(), path.end());
     }
-    reverse(path.begin(), path.end());
+
     return path;
 }
 
-unordered_map<int,int> CampusCompass::dijkstraDistances(int source) const {
-    unordered_map<int,int> dist;
-    struct Node { int id; int d; };
-    struct Cmp { bool operator()(const Node&a, const Node&b) const { return a.d > b.d; } };
-    priority_queue<Node, vector<Node>, Cmp> pq;
-    
-    dist[source] = 0;
-    pq.push({source,0});
-
-    while (!pq.empty()) {
-        auto cur = pq.top(); pq.pop();
-        int u = cur.id;
-        int d = cur.d;
-        
-        if (dist.count(u) && d > dist.at(u)) continue;
-
-        auto it = graph.find(u);
-        if (it == graph.end()) continue;
-        
-        for (const Edge &e : it->second) {
-            if (e.closed) continue; 
-            int v = e.to;
-            int newDist = d + e.weight;
-            if (!dist.count(v) || newDist < dist.at(v)) {
-                dist[v] = newDist;
-                pq.push({v, newDist});
-            }
-        }
-    }
-    return dist;
-}
-
-vector<pair<int,pair<int,int>>> CampusCompass::buildSubgraphEdgesForNodes(const set<int>& nodes) const {
-    vector<pair<int,pair<int,int>>> out;
-    for (auto &kv : edgesMetadata) {
-        int u = kv.first.first;
-        int v = kv.first.second;
-        int w = kv.second.first;
-        bool closed = kv.second.second;
-        
-        if (closed) continue; 
-        
-        if (nodes.count(u) && nodes.count(v)) {
-            out.push_back({w, {u, v}});
-        }
-    }
-    return out;
-}
-
-int CampusCompass::kruskalMSTCost(const vector<pair<int,pair<int,int>>>& edges, const vector<int>& nodeList) const {
-    vector<pair<int,pair<int,int>>> sortedEdges = edges;
-    sort(sortedEdges.begin(), sortedEdges.end(),
-        [](const pair<int, pair<int, int>>& a,
-           const pair<int, pair<int, int>>& b) {
-            return a.first < b.first;
-        }
-    );
+// Kruskal's: Computes MST cost
+int CampusCompass::kruskalMSTCost(const vector<pair<int,pair<int,int>>>& edges) const {
+    if (edges.empty()) return 0;
     
     DSU dsu;
-    for (int node : nodeList) dsu.p[node] = node;
+    int mstCost = 0;
     
-    int components = nodeList.size();
-    if (components <= 1) return 0;
+    vector<pair<int,pair<int,int>>> sortedEdges = edges;
+    sort(sortedEdges.begin(), sortedEdges.end());
     
-    int cost = 0;
-    for (auto &e : sortedEdges) {
-        int w = e.first;
-        int u = e.second.first;
-        int v = e.second.second;
+    for (const auto& edge : sortedEdges) {
+        int weight = edge.first;
+        int u = edge.second.first;
+        int v = edge.second.second;
         
         if (dsu.find(u) != dsu.find(v)) {
             dsu.unite(u, v);
-            cost += w;
-            components--;
-            if (components == 1) break; 
+            mstCost += weight;
         }
     }
-    return cost;
+    
+    return mstCost;
 }
 
-// --- Command Parsing Logic ---
+// --- Command Parsing and Handlers ---
 
-bool CampusCompass::parseCommand(const string &command) {
-    if (command.empty()) {
-        cout << "unsuccessful\n";
-        return false;
+bool CampusCompass::parseCommand(const string &commandLine) {
+    stringstream ss(commandLine);
+    string command;
+    if (!(ss >> command)) return false; 
+
+    if (command == "insert") return handleInsert(ss);
+    if (command == "remove") return handleRemove(ss);
+    if (command == "dropClass") return handleDropClass(ss);
+    if (command == "replaceClass") return handleReplaceClass(ss);
+    if (command == "removeClass") return handleRemoveClass(ss);
+    if (command == "toggleEdgesClosure") return handleToggleEdgesClosure(ss);
+    if (command == "checkEdgeStatus") return handleCheckEdgeStatus(ss);
+    if (command == "isConnected") return handleIsConnected(ss);
+    if (command == "printShortestEdges") return handlePrintShortestEdges(ss);
+    if (command == "printStudentZone") return handlePrintStudentZone(ss);
+    if (command == "verifySchedule") return handleVerifySchedule(ss);
+    
+    cout << "unsuccessful\n";
+    return false;
+}
+
+bool CampusCompass::handleInsert(stringstream& ss) {
+    string name = readQuotedString(ss);
+    string ufid;
+    int residence, n_classes;
+    
+    if (!(ss >> ufid >> residence >> n_classes)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    if (!validateName(name) || !validateUfid(ufid) || students.count(ufid)) {
+        cout << "unsuccessful\n"; return false;
+    }
+    if (n_classes < 1 || n_classes > 6) {
+        cout << "unsuccessful\n"; return false;
     }
     
-    // Command Count/Numeric Line Handling
-    try {
-        size_t firstNonSpace = command.find_first_not_of(" \t\r\n");
-        if (firstNonSpace != string::npos && 
-            isdigit((unsigned char)command[firstNonSpace]) && 
-            command.find_first_not_of("0123456789 \t\r\n", firstNonSpace) == string::npos) {
-            stoi(command);
-            cout << "successful\n"; 
-            return true;
+    set<string> class_codes;
+    for (int i = 0; i < n_classes; ++i) {
+        string code;
+        if (!(ss >> code) || !validateClassCode(code) || !classesMap.count(code) || class_codes.count(code)) {
+            cout << "unsuccessful\n"; return false;
         }
-    } catch (...) {}
+        class_codes.insert(code);
+    }
     
-    istringstream iss(command);
-    string cmd;
-    iss >> cmd;
+    string extra;
+    if (ss >> extra) {
+        cout << "unsuccessful\n"; return false;
+    }
+    
+    students[ufid] = {name, ufid, residence, class_codes};
+    cout << "successful\n";
+    return true;
+}
 
-    if (cmd == "insert") {
-        string rest = command.substr(6);
-        size_t q1 = rest.find('"');
-        size_t q2 = string::npos;
-        if (q1 != string::npos) q2 = rest.find('"', q1+1);
-        
-        if (q1 == string::npos || q2 == string::npos) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        string name = rest.substr(q1+1, q2 - q1 - 1);
-        string after = rest.substr(q2+1);
-        
-        istringstream aiss(after);
-        string ufid; 
-        int residence; 
-        int numClasses;
-
-        // Reads UFID, residence, and class count
-        if (!(aiss >> ufid >> residence >> numClasses)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        // Validate basic inputs (name characters, UFID length/type, class count range)
-        if (!validateName(name) || !validateUfid(ufid) || numClasses < 1 || numClasses > 6) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        // --- CORRECTED LOGIC: Check if Residence ID is a valid node in the graph ---
-        if (!graph.count(residence)) {
-            cout << "unsuccessful\n";
-            return false;
-        }
-        // -------------------------------------------------------------------------
-
-        vector<string> classList;
-        string code;
-        for (int i = 0; i < numClasses; ++i) {
-            if (!(aiss >> code)) { 
-                cout << "unsuccessful\n"; 
-                return false; 
-            }
-            // Validate class code format and check if it exists in map
-            if (!validateClassCode(code) || !classesMap.count(code)) { 
-                cout << "unsuccessful\n"; 
-                return false; 
-            }
-            classList.push_back(code);
-        }
-        
-        // Final check: Duplicate UFID
-        if (students.count(ufid)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        } 
-
-        Student s;
-        s.name = name;
-        s.ufid = ufid;
-        s.residence = residence;
-        for (const auto &c : classList) s.classes.insert(c);
-        students[ufid] = s;
-        cout << "successful\n";
-        return true;
-
-    } else if (cmd == "remove") {
-        string id;
-        if (!(iss >> id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        if (students.count(id)) { 
-            if (students.at(id).classes.empty()) {
-                students.erase(id);
-                cout << "successful\n";
-                return true;
-            } else {
-                cout << "unsuccessful\n"; 
-                return false;
-            }
-        } else {
-            cout << "unsuccessful\n"; 
-            return false;
-        }
-
-    } else if (cmd == "dropClass") {
-        string id, code;
-        if (!(iss >> id >> code)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        if (!students.count(id) || !validateClassCode(code) || !classesMap.count(code)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        Student &s = students.at(id);
-        if (!s.classes.count(code)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        s.classes.erase(code);
-        
-        if (s.classes.empty()) {
-            students.erase(id);
-        }
-        
-        cout << "successful\n";
-        return true;
-
-    } else if (cmd == "replaceClass") {
-        string id, codeA, codeB;
-        if (!(iss >> id >> codeA >> codeB)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        if (!students.count(id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        if (!validateClassCode(codeA) || !validateClassCode(codeB)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        if (!classesMap.count(codeB)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        Student &s = students.at(id);
-        // Must have codeA and must NOT have codeB
-        if (!s.classes.count(codeA) || s.classes.count(codeB)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        s.classes.erase(codeA);
-        s.classes.insert(codeB);
-        cout << "successful\n";
-        return true;
-
-    } else if (cmd == "removeClass") {
-        string code;
-        if (!(iss >> code)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        if (!validateClassCode(code) || !classesMap.count(code)) { 
-            cout << "0\n"; 
-            return true; 
-        } 
-        
-        int removedCount = 0;
-        
-        // Loop safely iterates and removes students if class count hits zero.
-        for (auto it = students.begin(); it != students.end(); ) {
-            Student &s = it->second;
-
-            if (s.classes.count(code)) {
-                s.classes.erase(code);
-                
-                if (s.classes.empty()) {
-                    removedCount++;
-                    it = students.erase(it); // Erase student and advance iterator
-                } else {
-                    it++; // Only dropped the class, keep student
-                }
-            } else {
-                ++it;
-            }
-        }
-        
-        cout << removedCount << "\n";
-        return true;
-
-    } else if (cmd == "toggleEdgesClosure") {
-        int count;
-        if (!(iss >> count)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        for (int i = 0; i < count; ++i) {
-            int a, b;
-            if (!(iss >> a >> b)) { 
-                cout << "unsuccessful\n";
-                return false; 
-            }
-            
-            int u = min(a,b), v = max(a,b);
-            auto it = edgesMetadata.find({u,v});
-            
-            if (it == edgesMetadata.end()) {
-                cout << "unsuccessful\n";
-                return false;
-            }
-            
-            bool newClosed = !it->second.second;
-            
-            // Update metadata
-            it->second.second = newClosed;
-
-            // Update both directions in the adjacency list
-            auto update_adj_list = [&](int start, int end, bool closed_status) {
-                if (graph.count(start)) {
-                    for (auto &e : graph.at(start)) { 
-                        if (e.to == end) { 
-                            e.closed = closed_status; 
-                            break; 
-                        } 
-                    }
-                }
-            };
-            
-            update_adj_list(a, b, newClosed);
-            update_adj_list(b, a, newClosed);
-        }
-        
-        cout << "successful\n";
-        return true;
-
-    } else if (cmd == "checkEdgeStatus") {
-        int a,b;
-        if (!(iss >> a >> b)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        int u = min(a,b), v = max(a,b);
-        auto it = edgesMetadata.find({u,v});
-        
-        if (it == edgesMetadata.end()) {
-            cout << "DNE\n";
-        } else {
-            if (it->second.second) cout << "closed\n"; else cout << "open\n";
-        }
-        return true;
-
-    } else if (cmd == "isConnected") {
-        int a,b;
-        if (!(iss >> a >> b)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        
-        if (!graph.count(a) || !graph.count(b)) {
-            cout << "unsuccessful\n";
-            return false;
-        }
-
-        set<int> visited;
-        queue<int> q;
-        q.push(a);
-        visited.insert(a);
-        bool found = false;
-
-        while (!q.empty()) {
-            int u = q.front(); q.pop();
-            if (u == b) { found = true; break; }
-
-            auto it = graph.find(u);
-            if (it == graph.end()) continue;
-
-            for (auto &e : it->second) {
-                if (e.closed) continue;
-                if (!visited.count(e.to)) {
-                    visited.insert(e.to);
-                    q.push(e.to);
-                }
-            }
-        }
-        if (found) cout << "successful\n"; else cout << "unsuccessful\n";
-        return true;
-
-    } else if (cmd == "printShortestEdges") {
-        string id;
-        if (!(iss >> id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        if (!students.count(id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        Student &s = students.at(id);
-        cout << "Name: " << s.name << "\n";
-        
-        vector<string> codes(s.classes.begin(), s.classes.end());
-        sort(codes.begin(), codes.end());
-
-        auto dists = dijkstraDistances(s.residence); 
-        
-        for (const auto &c : codes) {
-            int totalTime = -1;
-            if (classesMap.count(c)) {
-                int loc = classesMap.at(c).locationId;
-                if (dists.count(loc)) totalTime = dists.at(loc);
-            }
-            cout << c << " | Total Time: " << totalTime << "\n";
-        }
-        return true;
-
-    } else if (cmd == "printStudentZone") {
-        string id;
-        if (!(iss >> id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        if (!students.count(id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        Student &s = students.at(id);
-        set<int> nodes;
-
-        for (const auto &c : s.classes) {
-            if (!classesMap.count(c)) continue;
-            int loc = classesMap.at(c).locationId;
-            int outDist;
-            auto path = dijkstraPathNodes(s.residence, loc, outDist); 
-            if (outDist < 0) continue;
-            for (int v : path) nodes.insert(v); 
-        }
-        nodes.insert(s.residence);
-
-        auto subEdges = buildSubgraphEdgesForNodes(nodes);
-        vector<int> nodeList(nodes.begin(), nodes.end());
-        
-        int cost = 0;
-        if (nodeList.size() >= 1) { 
-            cost = kruskalMSTCost(subEdges, nodeList);
-        }
-        
-        cout << "Student Zone Cost For " << s.name << ": " << cost << "\n"; 
-        return true;
-
-    } else if (cmd == "verifySchedule") {
-        string id;
-        if (!(iss >> id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-        if (!students.count(id)) { 
-            cout << "unsuccessful\n"; 
-            return false; 
-        }
-
-        Student &s = students.at(id);
-        
-        if (s.classes.size() <= 1) { 
-            cout << "unsuccessful\n"; 
-            return true; 
-        }
-
-        struct ClassRecord { string code; int start; int end; int loc; };
-        vector<ClassRecord> records;
-
-        for (const auto &c : s.classes) {
-            if (!classesMap.count(c)) continue;
-            ClassInfo ci = classesMap.at(c);
-            int startMinutes = timeToMinutes(ci.startTime);
-            int endMinutes = timeToMinutes(ci.endTime);
-            
-            if (startMinutes < 0 || endMinutes < 0) continue; 
-            records.push_back({c, startMinutes, endMinutes, ci.locationId});
-        }
-        
-        sort(records.begin(), records.end(), [](const ClassRecord& a, const ClassRecord& b){
-            return a.start < b.start;
-        });
-        
-        if (records.size() <= 1) { 
-            cout << "unsuccessful\n"; 
-            return true; 
-        }
-
-        cout << "Schedule Check for " << s.name << ":\n";
-        
-        for (size_t i = 0; i + 1 < records.size(); ++i) {
-            int from = records[i].loc;
-            int to = records[i+1].loc;
-            int shortestTime = -1;
-            int outDist;
-            
-            dijkstraPathNodes(from, to, outDist); 
-            if (outDist >= 0) shortestTime = outDist;
-            
-            int timeGap = records[i+1].start - records[i].end;
-            
-            if (shortestTime <= timeGap && shortestTime >= 0) {
-                cout << records[i].code << " - " << records[i+1].code << " \"Can make it!\"\n";
-            } else {
-                cout << records[i].code << " - " << records[i+1].code << " \"Cannot make it!\"\n";
-            }
-        }
-        return true;
+bool CampusCompass::handleRemove(stringstream& ss) {
+    string ufid;
+    if (!(ss >> ufid)) {
+        cout << "unsuccessful\n"; return false;
+    }
+    if (students.erase(ufid) > 0) {
+        cout << "successful\n"; return true;
     } else {
-        cout << "unsuccessful\n";
-        return false;
+        cout << "unsuccessful\n"; return false;
     }
+}
+
+bool CampusCompass::handleDropClass(stringstream& ss) {
+    string ufid, code;
+    if (!(ss >> ufid >> code)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    if (!students.count(ufid) || !classesMap.count(code)) {
+        cout << "unsuccessful\n"; return false;
+    }
+    
+    Student& s = students.at(ufid);
+    if (!s.classes.count(code)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    s.classes.erase(code);
+    
+    if (s.classes.empty()) {
+        students.erase(ufid);
+    }
+    
+    cout << "successful\n";
+    return true;
+}
+
+bool CampusCompass::handleReplaceClass(stringstream& ss) {
+    string ufid, code1, code2;
+    if (!(ss >> ufid >> code1 >> code2)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    if (!students.count(ufid) || !classesMap.count(code2)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    Student& s = students.at(ufid);
+    if (!s.classes.count(code1) || s.classes.count(code2)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    s.classes.erase(code1);
+    s.classes.insert(code2);
+    
+    cout << "successful\n";
+    return true;
+}
+
+bool CampusCompass::handleRemoveClass(stringstream& ss) {
+    string code;
+    if (!(ss >> code) || !classesMap.count(code)) {
+        cout << "0\n"; return false;
+    }
+    
+    int dropped_count = 0;
+    vector<string> ufids_to_remove;
+
+    for (auto& pair : students) {
+        Student& s = pair.second;
+        if (s.classes.count(code)) {
+            s.classes.erase(code);
+            dropped_count++;
+            if (s.classes.empty()) {
+                ufids_to_remove.push_back(s.ufid);
+            }
+        }
+    }
+    
+    for (const string& ufid : ufids_to_remove) {
+        students.erase(ufid);
+    }
+
+    cout << dropped_count << "\n";
+    return true;
+}
+
+bool CampusCompass::handleToggleEdgesClosure(stringstream& ss) {
+    int n;
+    if (!(ss >> n)) {
+        cout << "successful\n"; // Input error handling simplified
+        return false; 
+    }
+    
+    for (int i = 0; i < n; ++i) {
+        int u, v;
+        if (!(ss >> u >> v)) break;
+
+        int id1 = min(u, v);
+        int id2 = max(u, v);
+        
+        if (edgesMetadata.count({id1, id2})) {
+            bool new_status = !edgesMetadata.at({id1, id2}).second;
+            edgesMetadata.at({id1, id2}).second = new_status;
+        
+            for (auto& edge : graph[u]) {
+                if (edge.to == v) { edge.closed = new_status; break; }
+            }
+            for (auto& edge : graph[v]) {
+                if (edge.to == u) { edge.closed = new_status; break; }
+            }
+        }
+    }
+    
+    cout << "successful\n";
+    return true;
+}
+
+bool CampusCompass::handleCheckEdgeStatus(stringstream& ss) {
+    int u, v;
+    if (!(ss >> u >> v)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    int id1 = min(u, v);
+    int id2 = max(u, v);
+    
+    if (!edgesMetadata.count({id1, id2})) {
+        cout << "DNE\n"; return true;
+    }
+    
+    if (edgesMetadata.at({id1, id2}).second) {
+        cout << "closed\n";
+    } else {
+        cout << "open\n";
+    }
+    return true;
+}
+
+bool CampusCompass::handleIsConnected(stringstream& ss) {
+    int u, v;
+    if (!(ss >> u >> v)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    if (!graph.count(u) || !graph.count(v)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    queue<int> q;
+    set<int> visited;
+    
+    q.push(u);
+    visited.insert(u);
+
+    while (!q.empty()) {
+        int curr = q.front();
+        q.pop();
+
+        if (curr == v) {
+            cout << "successful\n"; return true;
+        }
+
+        for (const auto& edge : graph.at(curr)) {
+            if (!edge.closed && !visited.count(edge.to)) {
+                visited.insert(edge.to);
+                q.push(edge.to);
+            }
+        }
+    }
+
+    cout << "unsuccessful\n";
+    return false;
+}
+
+struct ClassResult { string code; int time; };
+
+bool CampusCompass::handlePrintShortestEdges(stringstream& ss) {
+    string ufid;
+    if (!(ss >> ufid) || !students.count(ufid)) {
+        cout << "unsuccessful\n"; return false;
+    }
+    
+    const Student& s = students.at(ufid);
+    unordered_map<int, int> shortest_distances = dijkstraDistances(s.residence);
+    vector<ClassResult> results;
+    
+    for (const string& code : s.classes) {
+        int locId = classesMap.at(code).locationId;
+        int shortestTime = -1;
+
+        if (shortest_distances.count(locId)) {
+            shortestTime = shortest_distances.at(locId);
+        }
+        
+        results.push_back({code, shortestTime});
+    }
+
+    sort(results.begin(), results.end(), [](const ClassResult& a, const ClassResult& b) {
+        return a.code < b.code;
+    });
+
+    cout << "Name: " << s.name << "\n";
+    for (const auto& res : results) {
+        cout << res.code << " | Total Time: " << res.time << "\n";
+    }
+    return true;
+}
+
+bool CampusCompass::handlePrintStudentZone(stringstream& ss) {
+    string ufid;
+    if (!(ss >> ufid) || !students.count(ufid)) {
+        cout << "unsuccessful\n"; return false;
+    }
+    
+    const Student& s = students.at(ufid);
+    set<int> all_path_nodes;
+    bool has_reachable_class = false;
+    
+    for (const string& code : s.classes) {
+        int target = classesMap.at(code).locationId;
+        int dist;
+        vector<int> path = dijkstraPathNodes(s.residence, target, dist);
+        
+        if (dist != -1) {
+            has_reachable_class = true;
+            all_path_nodes.insert(path.begin(), path.end());
+        }
+    }
+    
+    if (!has_reachable_class) {
+        cout << "Student Zone Cost For " << s.name << ": 0\n";
+        return true; 
+    }
+
+    // Build subgraph edges only using open edges and nodes on the shortest paths
+    vector<pair<int,pair<int,int>>> subgraphEdges;
+    for (auto const& [key, metadata] : edgesMetadata) {
+        int u = key.first;
+        int v = key.second;
+        int weight = metadata.first;
+        bool closed = metadata.second;
+
+        if (!closed && all_path_nodes.count(u) && all_path_nodes.count(v)) {
+            subgraphEdges.push_back({weight, {u, v}});
+        }
+    }
+    
+    int mstCost = kruskalMSTCost(subgraphEdges);
+    
+    cout << "Student Zone Cost For " << s.name << ": " << mstCost << "\n";
+    return true;
+}
+
+struct ClassRecord { string code; int start, end, loc; };
+
+bool CampusCompass::handleVerifySchedule(stringstream& ss) {
+    string ufid;
+    if (!(ss >> ufid) || !students.count(ufid)) {
+        cout << "unsuccessful\n"; return false;
+    }
+
+    const Student& s = students.at(ufid);
+    vector<ClassRecord> records;
+
+    for (const string& c : s.classes) {
+        ClassInfo ci = classesMap.at(c);
+        int startMinutes = timeToMinutes(ci.startTime);
+        int endMinutes = timeToMinutes(ci.endTime);
+        
+        if (startMinutes < 0 || endMinutes < 0) continue; 
+        records.push_back({c, startMinutes, endMinutes, ci.locationId});
+    }
+    
+    sort(records.begin(), records.end(), [](const ClassRecord& a, const ClassRecord& b){
+        return a.start < b.start;
+    });
+    
+    if (records.size() <= 1) { 
+        cout << "unsuccessful\n"; return true; 
+    }
+
+    cout << "Schedule Check for " << s.name << ":\n";
+    
+    for (size_t i = 0; i + 1 < records.size(); ++i) {
+        int from = records[i].loc; 
+        int to = records[i+1].loc;
+        int outDist;
+        
+        dijkstraPathNodes(from, to, outDist); 
+        int shortestTime = outDist;
+        
+        int timeGap = records[i+1].start - records[i].end;
+        
+        string status;
+        if (shortestTime >= 0 && shortestTime <= timeGap) {
+            status = "\"Can make it!\"";
+        } else {
+            status = "\"Cannot make it!\"";
+        }
+
+        cout << records[i].code << " - " << records[i+1].code << " " << status << "\n";
+    }
+
+    return true;
 }
