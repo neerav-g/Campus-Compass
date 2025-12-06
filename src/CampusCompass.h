@@ -4,11 +4,11 @@
 #include <vector>
 #include <set>
 #include <utility> 
-#include <algorithm> // Required for min/max
+#include <algorithm>
 
 using namespace std;
 
-// --- Helper Data Structures ---
+// --- Helper Data Structures for Hashing and Edges ---
 
 // Structure for hashing a pair of ints, used as a key for edges_metadata map
 struct EdgeKeyHash {
@@ -41,21 +41,6 @@ struct Student {
     set<string> classes; // Stores class codes
 };
 
-// --- Disjoint Set Union (DSU) Structure for Kruskal's Algorithm ---
-struct DSU {
-    unordered_map<int,int> p;
-    int find(int x) {
-        if (!p.count(x)) p[x] = x;
-        if (p[x] == x) return x;
-        return p[x] = find(p[x]); // Path compression for efficiency
-    }
-    void unite(int a, int b) { 
-        a = find(a); 
-        b = find(b); 
-        if (a != b) p[b] = a; 
-    }
-};
-
 // --- Main Class Definition ---
 
 class CampusCompass {
@@ -67,7 +52,7 @@ private:
     unordered_map<string, ClassInfo> classesMap; // ClassCode -> ClassInfo
     unordered_map<string, Student> students; // UFID -> Student
 
-    // --- Private Helper Methods ---
+    // --- Private Helper Method Declarations ---
 
     // Data Loading
     bool loadEdges(const string &filePath);

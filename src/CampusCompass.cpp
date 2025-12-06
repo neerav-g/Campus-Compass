@@ -11,14 +11,16 @@
 
 using namespace std;
 
-// --- DSU Structure for Kruskal's ---
+// --- Disjoint Set Union (DSU) Structure ---
 struct DSU {
     unordered_map<int,int> p;
+
     int find(int x) {
         if (!p.count(x)) p[x] = x;
         if (p[x] == x) return x;
-        return p[x] = find(p[x]); 
+        return p[x] = find(p[x]); // Path compression
     }
+
     void unite(int a, int b) { 
         a = find(a); 
         b = find(b); 
@@ -64,10 +66,11 @@ vector<string> CampusCompass::splitCsvLine(const string &line) {
     return out;
 }
 
-// FIX: Ensure only letters and spaces are allowed.
+// FIX: Enhanced Name Validation (Test 1 fix)
 bool CampusCompass::validateName(const string &name) {
     if (name.empty()) return false;
     for (char c : name) {
+        // Strictly allow only letters and spaces.
         if (!(isalpha((unsigned char)c) || c == ' ')) return false;
     }
     return true;
@@ -336,16 +339,26 @@ bool CampusCompass::parseCommand(const string &command) {
         size_t q2 = string::npos;
         if (q1 != string::npos) q2 = rest.find('"', q1+1);
         
-        if (q1 == string::npos || q2 == string::npos) { cout << "unsuccessful\n"; return false; }
+        if (q1 == string::npos || q2 == string::npos) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
         
         string name = rest.substr(q1+1, q2 - q1 - 1);
         string after = rest.substr(q2+1);
         
         istringstream aiss(after);
-        string ufid; int residence; int numClasses;
+        string ufid; 
+        int residence; 
+        int numClasses;
 
-        if (!(aiss >> ufid >> residence >> numClasses)) { cout << "unsuccessful\n"; return false; }
+        // Reads UFID, residence, and class count
+        if (!(aiss >> ufid >> residence >> numClasses)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
+        // Validate basic inputs (name characters, UFID length/type, class count range)
         if (!validateName(name) || !validateUfid(ufid) || numClasses < 1 || numClasses > 6) { 
             cout << "unsuccessful\n"; 
             return false; 
@@ -358,6 +371,7 @@ bool CampusCompass::parseCommand(const string &command) {
                 cout << "unsuccessful\n"; 
                 return false; 
             }
+            // Validate class code format and check if it exists in map
             if (!validateClassCode(code) || !classesMap.count(code)) { 
                 cout << "unsuccessful\n"; 
                 return false; 
@@ -365,7 +379,11 @@ bool CampusCompass::parseCommand(const string &command) {
             classList.push_back(code);
         }
         
-        if (students.count(ufid)) { cout << "unsuccessful\n"; return false; } 
+        // Final check: Duplicate UFID
+        if (students.count(ufid)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        } 
 
         Student s;
         s.name = name;
@@ -378,7 +396,10 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "remove") {
         string id;
-        if (!(iss >> id)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
         
         if (students.count(id)) { 
             if (students.at(id).classes.empty()) {
@@ -396,7 +417,10 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "dropClass") {
         string id, code;
-        if (!(iss >> id >> code)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> id >> code)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
         if (!students.count(id) || !validateClassCode(code) || !classesMap.count(code)) { 
             cout << "unsuccessful\n"; 
@@ -404,7 +428,10 @@ bool CampusCompass::parseCommand(const string &command) {
         }
         
         Student &s = students.at(id);
-        if (!s.classes.count(code)) { cout << "unsuccessful\n"; return false; }
+        if (!s.classes.count(code)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
         
         s.classes.erase(code);
         
@@ -417,13 +444,26 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "replaceClass") {
         string id, codeA, codeB;
-        if (!(iss >> id >> codeA >> codeB)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> id >> codeA >> codeB)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
-        if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
-        if (!validateClassCode(codeA) || !validateClassCode(codeB)) { cout << "unsuccessful\n"; return false; }
-        if (!classesMap.count(codeB)) { cout << "unsuccessful\n"; return false; }
+        if (!students.count(id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
+        if (!validateClassCode(codeA) || !validateClassCode(codeB)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
+        if (!classesMap.count(codeB)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
         Student &s = students.at(id);
+        // Must have codeA and must NOT have codeB
         if (!s.classes.count(codeA) || s.classes.count(codeB)) { 
             cout << "unsuccessful\n"; 
             return false; 
@@ -436,7 +476,10 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "removeClass") {
         string code;
-        if (!(iss >> code)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> code)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
         
         if (!validateClassCode(code) || !classesMap.count(code)) { 
             cout << "0\n"; 
@@ -445,18 +488,18 @@ bool CampusCompass::parseCommand(const string &command) {
         
         int removedCount = 0;
         
-        // FIX: Use iterator loop to safely erase students if class count hits zero.
+        // Loop safely iterates and removes students if class count hits zero.
         for (auto it = students.begin(); it != students.end(); ) {
             Student &s = it->second;
 
             if (s.classes.count(code)) {
-                removedCount++;
                 s.classes.erase(code);
                 
                 if (s.classes.empty()) {
+                    removedCount++;
                     it = students.erase(it); // Erase student and advance iterator
                 } else {
-                    ++it;
+                    it++; // Only dropped the class, keep student
                 }
             } else {
                 ++it;
@@ -493,13 +536,13 @@ bool CampusCompass::parseCommand(const string &command) {
             // Update metadata
             it->second.second = newClosed;
 
-            // FIX: Ensure both directions of the adjacency list are updated for the graph (Test 4 fix)
+            // Update both directions in the adjacency list
             auto update_adj_list = [&](int start, int end, bool closed_status) {
                 if (graph.count(start)) {
                     for (auto &e : graph.at(start)) { 
                         if (e.to == end) { 
                             e.closed = closed_status; 
-                            break; // Edge found, stop searching in this list
+                            break; 
                         } 
                     }
                 }
@@ -514,7 +557,10 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "checkEdgeStatus") {
         int a,b;
-        if (!(iss >> a >> b)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> a >> b)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
         
         int u = min(a,b), v = max(a,b);
         auto it = edgesMetadata.find({u,v});
@@ -528,7 +574,10 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "isConnected") {
         int a,b;
-        if (!(iss >> a >> b)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> a >> b)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
         
         if (!graph.count(a) || !graph.count(b)) {
             cout << "unsuccessful\n";
@@ -561,8 +610,14 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "printShortestEdges") {
         string id;
-        if (!(iss >> id)) { cout << "unsuccessful\n"; return false; }
-        if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
+        if (!students.count(id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
         Student &s = students.at(id);
         cout << "Name: " << s.name << "\n";
@@ -584,8 +639,14 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "printStudentZone") {
         string id;
-        if (!(iss >> id)) { cout << "unsuccessful\n"; return false; }
-        if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
+        if (!students.count(id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
         Student &s = students.at(id);
         set<int> nodes;
@@ -613,8 +674,14 @@ bool CampusCompass::parseCommand(const string &command) {
 
     } else if (cmd == "verifySchedule") {
         string id;
-        if (!(iss >> id)) { cout << "unsuccessful\n"; return false; }
-        if (!students.count(id)) { cout << "unsuccessful\n"; return false; }
+        if (!(iss >> id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
+        if (!students.count(id)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
+        }
 
         Student &s = students.at(id);
         
