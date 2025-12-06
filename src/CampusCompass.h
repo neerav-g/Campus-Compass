@@ -65,7 +65,7 @@ private:
     
     static int TimeToMinutes(const string &hhmm);
     
-    // Utility for splitting CSV lines (defined in .cpp)
+    // FIX FOR LINKER ERROR: Declare as a static member function
     static vector<string> split_csv_line(const string &line); 
 
 public:
