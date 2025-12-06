@@ -4,88 +4,92 @@
 #include <vector>
 #include <set>
 #include <utility> 
-#include <algorithm> 
+#include <algorithm> // Required for min/max
 
 using namespace std;
 
+// --- Helper Data Structures ---
 
-// --- Helper stuff I need to make the maps work ---
-
+// Structure for hashing a pair of ints, used as a key for edges_metadata map
 struct EdgeKeyHash {
-
-    size_t operator()(const pair<int,int>&p) const noexcept {
-        // Hashing for edge pairs. This took me liek 2 hours to figure out, dont touch.
-        return std::hash<long long>()(((long long)p.first<<32) ^ (long long)p.second);
+    size_t operator()(const pair<int,int>& p) const noexcept {
+        // Simple hash combination technique
+        return std::hash<long long>()(((long long)p.first << 32) ^ (long long)p.second);
     }
 };
 
-// Edge definition
+// Represents an edge in the graph
 struct Edge {
     int to;
     int weight;
-    bool closed; // Toggled for construction/events
+    bool closed; // True if the edge is closed (unavailable)
     Edge(int t = 0, int w = 0, bool c = false) : to(t), weight(w), closed(c) {}
-
 };
 
-// Class data
+// Stores class information
 struct ClassInfo {
-
-    int location_id;
-    string start_time; // "HH:MM"
-    string end_time;   // "HH:MM"
+    int locationId;
+    string startTime; // "HH:MM"
+    string endTime;   // "HH:MM"
 };
 
-// Student struct, its gona hold evrythin'
+// Stores student information
 struct Student {
-
     string name;
     string ufid; 
     int residence;
-    set<string> classes; // Stores class codes, use set to avoid dups
-
+    set<string> classes; // Stores class codes
 };
 
-// --- Main Campus Class ---
+// --- Disjoint Set Union (DSU) Structure for Kruskal's Algorithm ---
+struct DSU {
+    unordered_map<int,int> p;
+    int find(int x) {
+        if (!p.count(x)) p[x] = x;
+        if (p[x] == x) return x;
+        return p[x] = find(p[x]); // Path compression for efficiency
+    }
+    void unite(int a, int b) { 
+        a = find(a); 
+        b = find(b); 
+        if (a != b) p[b] = a; 
+    }
+};
+
+// --- Main Class Definition ---
 
 class CampusCompass {
-
 private:
-    // Core data structures
-    unordered_map<int, vector<Edge>> graph; // main graph: LocationID -> list of Edges
-    // Stores (u, v) -> {weight, closed} for quick edge status lookup
-    unordered_map<pair<int,int>, pair<int,bool>, EdgeKeyHash> edges_metadata; 
-    unordered_map<string, ClassInfo> classes_map; // ClassCode -> Info
+    // Core Data Structures
+    unordered_map<int, vector<Edge>> graph; // Adjacency List: LocationID -> Edges
+    // Canonical edge key (min_id, max_id) -> {weight, closed_status}
+    unordered_map<pair<int,int>, pair<int,bool>, EdgeKeyHash> edgesMetadata; 
+    unordered_map<string, ClassInfo> classesMap; // ClassCode -> ClassInfo
     unordered_map<string, Student> students; // UFID -> Student
 
-    // file loading helpers
-    bool LoadEdges(const string &filepath);
-    bool LoadClasses(const string &filepath);
-    
-    // Validaters and helper funxions
-    static bool ValidateName(const string &name);
-    static bool ValidateUFID(const string &ufid);
-    static bool ValidateClassCode(const string &code);
-    // this splits a line from the CSV
-    static vector<string> split_csv_line(const string &line); 
+    // --- Private Helper Methods ---
 
-    // Graph algos - need to be private
-    // Dijkstra's for shortest path time
-    unordered_map<int,int> DijkstraDistances(int source) const;
-    vector<int> DijkstraPathNodes(int source, int target, int &out_dist) const;
+    // Data Loading
+    bool loadEdges(const string &filePath);
+    bool loadClasses(const string &filePath);
     
-    // Kruskal's MST helpers for student zones
-    vector<pair<int,pair<int,int>>> BuildSubgraphEdgesForNodes(const set<int>& nodes) const;
-    // this calculates the cost, man...
-    int KruskalMSTCost(int n_nodes, const vector<pair<int,pair<int,int>>>& edges, const vector<int>& node_list) const;
-    
-    // time convertor for verifySchedule
-    static int TimeToMinutes(const string &hhmm);
+    // Input/Data Validation & Utilities
+    static bool validateName(const string &name);
+    static bool validateUfid(const string &ufid);
+    static bool validateClassCode(const string &code);
+    static vector<string> splitCsvLine(const string &line); 
+    static int timeToMinutes(const string &hhmm);
 
+    // Graph Algorithms
+    unordered_map<int,int> dijkstraDistances(int source) const;
+    vector<int> dijkstraPathNodes(int source, int target, int &outDist) const;
+    
+    // Kruskal's MST Helpers
+    vector<pair<int,pair<int,int>>> buildSubgraphEdgesForNodes(const set<int>& nodes) const;
+    int kruskalMSTCost(const vector<pair<int,pair<int,int>>>& edges, const vector<int>& nodeList) const;
+    
 public:
-    CampusCompass(); // need this for the linker!
-
-    bool ParseCSV(const string &edges_filepath, const string &classes_filepath);
-
-    bool ParseCommand(const string &command);
+    CampusCompass();
+    bool parseCSV(const string &edgesFilePath, const string &classesFilePath);
+    bool parseCommand(const string &command);
 };
