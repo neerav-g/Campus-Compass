@@ -422,40 +422,51 @@ bool CampusCompass::ParseCommand(const string &command) {
         cout << removed_count << "\n";
         return true;
     } else if (cmd == "toggleEdgesClosure") {
-        int status;
-        if (!(iss >> status)) { cout << "unsuccessful\n"; return false; }
-        
-        int a, b;
-        if (!(iss >> a >> b)) { cout << "unsuccessful\n"; return false; }
-        
-        int u = min(a,b), v = max(a,b);
-        auto it = edges_metadata.find({u,v});
-        
-        if (it == edges_metadata.end()) {
-            cout << "unsuccessful\n"; // Edge DNE
-            return false;
+        int count; // N, the number of edges to follow
+        if (!(iss >> count)) { 
+            cout << "unsuccessful\n"; 
+            return false; 
         }
         
-        // FIX: Toggle Logic (1=open (false), 0=closed (true))
-        bool target_closed = (status == 0); 
-        bool current_closed = it->second.second;
+        bool success = true;
+        for (int i = 0; i < count; ++i) {
+            int a, b;
+            if (!(iss >> a >> b)) { 
+                // If not enough IDs are provided for the count, this is invalid
+                cout << "unsuccessful\n";
+                return false; 
+            }
+            
+            int u = min(a,b), v = max(a,b);
+            auto it = edges_metadata.find({u,v});
+            
+            if (it == edges_metadata.end()) {
+                // The problem states: "You will always be given valid edges in this method."
+                // So, we assume the edge exists and proceed to toggle.
+                // If the edge DNE, printing "successful" might still be expected 
+                // if the overall command structure is valid. Sticking to the toggle logic:
+                success = false; // Set success to false if logic dictates edge DNE
+                continue; 
+            }
+            
+            // TOGGLE the state: open -> closed, closed -> open
+            bool current_closed = it->second.second;
+            bool new_closed = !current_closed;
+            
+            // Update the state in metadata
+            it->second.second = new_closed;
 
-        // If edge is ALREADY in the target state, print unsuccessful.
-        if (current_closed == target_closed) {
-            cout << "unsuccessful\n";
-            return false;
+            // Update graph adjacency lists
+            for (auto &e : graph[a]) { if (e.to == b) { e.closed = new_closed; } }
+            for (auto &e : graph[b]) { if (e.to == a) { e.closed = new_closed; } }
         }
         
-        // Update the state in metadata
-        it->second.second = target_closed;
-
-        // Update graph adjacency lists
-        for (auto &e : graph[a]) { if (e.to == b) { e.closed = target_closed; } }
-        for (auto &e : graph[b]) { if (e.to == a) { e.closed = target_closed; } }
-        
-        cout << "successful\n"; // State was changed successfully
+        // Since the prompt states, "You will always be given valid edges",
+        // we assume success is true if the loop completes.
+        cout << "successful\n";
         return true;
 
+    
     } else if (cmd == "checkEdgeStatus") {
         int a,b;
         if (!(iss >> a >> b)) { cout << "unsuccessful\n"; return false; }
