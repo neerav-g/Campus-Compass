@@ -11,16 +11,21 @@ using namespace std;
 
 int main() {
     
+    // Instantiate the CampusCompass object
     CampusCompass cc;
     
     // 1. Load data
     if (!cc.parseCSV(EDGES_FILE_PATH, CLASSES_FILE_PATH)) {
-        // Warning is omitted to keep output clean, but failure is noted.
+        cerr << "Warning: Could not load required CSV files." << endl;
     }
 
-    // Read and discard the command count line (required for autograder format)
+    // --- Critical Fix for Autograder Output ---
+    // Read the total number of commands line but DO NOT process it as a command.
+    // This prevents the extraneous "successful" output line at the start.
     string lineCountStr;
-    if (!getline(cin, lineCountStr)) {
+    if (getline(cin, lineCountStr)) {
+        // Read and discard the line count.
+    } else {
         return 0; 
     }
 
