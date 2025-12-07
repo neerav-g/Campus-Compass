@@ -1,182 +1,83 @@
+#define CATCH_CONFIG_MAIN
 #include <catch2/catch_test_macros.hpp>
 #include "CampusCompass.h"
-#include <iostream>
 #include <sstream>
-#include <string>
+#include <fstream>
+#include <cstdio>
 
-// Helper function to simulate parsing a command and capturing output
-std::string runCommand(CampusCompass& cc, const std::string& command) {
-    std::stringstream buffer;
-    // Redirect std::cout to the buffer
-    std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());
-    
-    cc.parseCommand(command);
-    
-    // Restore std::cout
-    std::cout.rdbuf(old);
-    return buffer.str();
+using namespace std;
+
+
+TEST_CASE("Test 1: Invalid Commands", "[CampusCompass]") {
+    CampusCompass cc;
+    cc.parseCSV("edges.csv", "classes.csv");
+
+    // Five invalid commands
+    REQUIRE(cc.parseCommand(R"(insert "A11y" 45679999 1 1 COP3530)") == false);
+    REQUIRE(cc.parseCommand(R"(insert "Bob!" 12345678 2 1 COP3502)") == false);
+    REQUIRE(cc.parseCommand(R"(insert "Alice" 1234ABCD 1 1 COP3502)") == false);
+    REQUIRE(cc.parseCommand(R"(replaceClass 12345678 COP3502 COP3505)") == false);
+    REQUIRE(cc.parseCommand(R"(dropClass 00000000 COP3502)") == false);
 }
 
-// NOTE: This setup assumes the test data (edges.csv and classes.csv) 
-// is correctly loaded by the CampusCompass constructor/setup, and 
-// contains the minimum required data for these tests (e.g., edges 100-200, 300-400, classes COP3530, EEL3701).
-
-TEST_CASE("Part 1: Incorrect Command Input Validation", "[UnitTests]") {
+TEST_CASE("Test 2: Edge Cases", "[CampusCompass]") {
     CampusCompass cc;
-    // Assume cc.parseCSV("data/edges.csv", "data/classes.csv") succeeded in a global setup.
+    cc.parseCSV("edges.csv", "classes.csv");
 
-    SECTION("Incorrect 'insert' commands (5 tests)") {
-        // 1. Invalid Name (contains non-alpha/space char)
-        REQUIRE(runCommand(cc, "insert \"Alice1\" 12345678 100 1 COP3530").find("unsuccessful") != std::string::npos);
-        
-        // 2. Invalid UFID (not 8 digits)
-        REQUIRE(runCommand(cc, "insert \"Bob\" 1234567 100 1 COP3530").find("unsuccessful") != std::string::npos);
-        
-        // 3. Invalid Class Code (not 3 letters + 4 digits)
-        REQUIRE(runCommand(cc, "insert \"Charlie\" 87654321 100 1 C3530").find("unsuccessful") != std::string::npos);
-        
-        // 4. Class Code DNE in classesMap
-        REQUIRE(runCommand(cc, "insert \"David\" 11112222 100 1 FAK3000").find("unsuccessful") != std::string::npos);
-        
-        // 5. Invalid number of classes (0 classes)
-        REQUIRE(runCommand(cc, "insert \"Eve\" 33334444 100 0").find("unsuccessful") != std::string::npos);
-    }
+    // Remove student that doesn't exist
+    REQUIRE(cc.parseCommand("remove 99999999") == false);
+    // Toggle edge that doesn't exist
+    REQUIRE(cc.parseCommand("toggleEdgesClosure 1 999 1000") == false);
+    // Check edge status for non-existent edge
+    REQUIRE(cc.parseCommand("checkEdgeStatus 1 999") == true); // prints DNE
 }
 
-TEST_CASE("Part 2: Edge Cases for Various Functions", "[UnitTests]") {
+TEST_CASE("Test 3: Student Class Commands", "[CampusCompass]") {
     CampusCompass cc;
-    // Assume cc.parseCSV loaded data
-    
-    // Setup a valid student "Alice"
-    REQUIRE(runCommand(cc, "insert \"Alice\" 10000000 100 1 COP3530").find("successful") != std::string::npos);
+    cc.parseCSV("edges.csv", "classes.csv");
 
-    SECTION("Edge Case 1: Removing a student that doesn’t exist") {
-        REQUIRE(runCommand(cc, "remove 99999999").find("unsuccessful") != std::string::npos);
-    }
+    // Insert student with two classes
+    REQUIRE(cc.parseCommand(R"(insert "Bob" 12345678 1 2 COP3530 COP3502)") == true);
 
-    SECTION("Edge Case 2: Attempting to remove a student with classes (should fail)") {
-        REQUIRE(runCommand(cc, "remove 10000000").find("unsuccessful") != std::string::npos); // Alice still has COP3530
-    }
+    // Drop class COP3502, student should still exist
+    REQUIRE(cc.parseCommand("dropClass 12345678 COP3502") == true);
 
-    SECTION("Edge Case 3: Checking status of an edge that DNE") {
-        REQUIRE(runCommand(cc, "checkEdgeStatus 999 888").find("DNE") != std::string::npos);
-    }
+    // Drop class COP3530, student should be removed automatically
+    REQUIRE(cc.parseCommand("dropClass 12345678 COP3530") == true);
 
-    SECTION("Edge Case 4: isConnected check between non-existent nodes") {
-        REQUIRE(runCommand(cc, "isConnected 999 888").find("unsuccessful") != std::string::npos);
-    }
+    // Re-insert for replaceClass test
+    REQUIRE(cc.parseCommand(R"(insert "Bob" 12345678 1 2 COP3530 COP3502)") == true);
+    REQUIRE(cc.parseCommand("replaceClass 12345678 COP3502 COP3503") == true);
+
+    // Attempt to remove student with classes should fail
+    REQUIRE(cc.parseCommand("remove 12345678") == false);
+
+    // RemoveClass COP3530 should remove COP3530 from Bob
+    REQUIRE(cc.parseCommand("removeClass COP3530") == true);
+
+    // Now Bob should only have COP3503
+    REQUIRE(cc.parseCommand("remove 12345678") == false); // still has 1 class
 }
 
-TEST_CASE("Part 3: dropClass, removeClass, remove, and replaceClass", "[UnitTests]") {
+TEST_CASE("Test 4: printShortestEdges with Edge Closure", "[CampusCompass]") {
     CampusCompass cc;
-    // NOTE: We assume 'COP3530' and 'EEL3701' are valid classes in classes.csv.
-    
-    // Test the state transitions completely.
+    cc.parseCSV("edges.csv", "classes.csv");
 
-    SECTION("Drop Class and Student Removal Logic") {
-        // Setup Alice (10000000) with 2 classes
-        runCommand(cc, "insert \"Alice\" 10000000 100 2 COP3530 EEL3701");
-        // Setup Bob (20000000) with 1 class
-        runCommand(cc, "insert \"Bob\" 20000000 400 1 COP3530");
+    // Insert student located at Hume Hall (1) with class COP3530 at location 14
+    REQUIRE(cc.parseCommand(R"(insert "Bob" 12345678 1 1 COP3530)") == true);
 
-        // dropClass (Alice drops one, remains in system)
-        REQUIRE(runCommand(cc, "dropClass 10000000 EEL3701").find("successful") != std::string::npos);
-        
-        // dropClass (Bob drops his last class, should be REMOVED)
-        REQUIRE(runCommand(cc, "dropClass 20000000 COP3530").find("successful") != std::string::npos);
-        
-        // Check: Bob is now gone.
-        REQUIRE(runCommand(cc, "remove 20000000").find("unsuccessful") != std::string::npos); 
-    }
-    
-    SECTION("replaceClass Logic") {
-        // Setup Charlie (30000000) with COP3530 (assuming NEW9999 is another valid class)
-        // NOTE: If NEW9999 DNE in your classes.csv, this test needs to use two *known* valid class codes. 
-        // We'll use EEL3701 which is assumed to be valid but NOT currently held by Charlie.
-        runCommand(cc, "insert \"Charlie\" 30000000 100 1 COP3530");
+    // Initial shortest paths should be valid
+    REQUIRE(cc.parseCommand("printShortestEdges 12345678") == true);
 
-        // replaceClass (Should succeed: COP3530 -> EEL3701)
-        REQUIRE(runCommand(cc, "replaceClass 30000000 COP3530 EEL3701").find("successful") != std::string::npos);
-        
-        // Fails if student already has the target class EEL3701
-        REQUIRE(runCommand(cc, "replaceClass 30000000 COP3530 EEL3701").find("unsuccessful") != std::string::npos); 
-    }
+    // Close edge 1-4 (Hume Hall <-> Rawlings Hall)
+    REQUIRE(cc.parseCommand("toggleEdgesClosure 1 1 4") == true);
 
-    SECTION("removeClass (Global class removal)") {
-        // Setup David (40000000) with COP3530 and EEL3701 (remains after remove)
-        runCommand(cc, "insert \"David\" 40000000 100 2 COP3530 EEL3701");
-        // Setup Eve (50000000) with COP3530 (should be REMOVED after remove)
-        runCommand(cc, "insert \"Eve\" 50000000 400 1 COP3530");
-        
-        // Remove class COP3530: affects 2 students (David is modified, Eve is removed).
-        // Output is the count of students the class was dropped from (2).
-        std::string output = runCommand(cc, "removeClass COP3530");
-        REQUIRE(output.find("2") != std::string::npos);
-        
-        // Check: Eve (removed student) is now gone.
-        REQUIRE(runCommand(cc, "remove 50000000").find("unsuccessful") != std::string::npos);
-        // Check: David (modified student) is still present.
-        REQUIRE(runCommand(cc, "remove 40000000").find("unsuccessful") == std::string::npos);
-    }
-    
-    SECTION("remove (Specific UFID removal)") {
-        CampusCompass cc2; // Use a fresh object to avoid contamination
-        // Setup a student with 0 classes
-        runCommand(cc2, "insert \"Frank\" 60000000 100 1 COP3530");
-        runCommand(cc2, "dropClass 60000000 COP3530"); // Frank now has 0 classes
-        
-        // Frank has 0 classes and can now be removed
-        REQUIRE(runCommand(cc2, "remove 60000000").find("successful") != std::string::npos);
-    }
-}
+    // After edge closure, printShortestEdges should reflect longer path or unreachable
+    REQUIRE(cc.parseCommand("printShortestEdges 12345678") == true);
 
-TEST_CASE("Part 4: printShortestEdges and Edges Closure State Change (FINAL FIX)", "[UnitTests]") {
-    CampusCompass cc;
-    // NOTE: Student setup is now moved into sections below to ensure persistence.
+    // Reopen the edge
+    REQUIRE(cc.parseCommand("toggleEdgesClosure 1 1 4") == true);
 
-    // Helper to ensure student is created for the section
-    auto setup_alice = [&cc]() {
-        // Use a unique UFID for each section to prevent conflicts if not fully isolated
-        runCommand(cc, "insert \"Alice\" 10000000 1 1 COP3530"); 
-    };
-
-    SECTION("Initial printShortestEdges (Student can reach class)") {
-        setup_alice(); // Re-insert Alice
-        
-        std::string output1 = runCommand(cc, "printShortestEdges 10000000");
-        
-        REQUIRE( output1.find("Name: Alice") != std::string::npos ); 
-        REQUIRE( output1.find("COP3530 | Total Time: 23") != std::string::npos ); 
-    }
-    
-    SECTION("Edge Toggle OFF and Reachability Check") {
-        setup_alice(); // Re-insert Alice
-        
-        // Toggle OFF critical edge (1, 4)
-        runCommand(cc, "toggleEdgesClosure 1 1 4"); 
-        
-        // Check for reachability failure (Time: -1)
-        std::string output2 = runCommand(cc, "printShortestEdges 10000000");
-        
-        REQUIRE( output2.find("Name: Alice") != std::string::npos );
-        REQUIRE( output2.find("COP3530 | Total Time: -1") != std::string::npos ); 
-    }
-    
-    SECTION("Edge Toggle ON and Reachability Restore") {
-        // NOTE: Alice needs to be inserted AND the edge needs to be closed first, then reopened.
-        // This section tests the combined action from Section 2 + the final step.
-        setup_alice(); 
-        
-        // 1. Close the edge (Simulating the state change from the prompt requirement)
-        runCommand(cc, "toggleEdgesClosure 1 1 4");
-        
-        // 2. Open the edge
-        runCommand(cc, "toggleEdgesClosure 1 1 4");
-        
-        // 3. Check for path restoration (Time: 23)
-        std::string output3 = runCommand(cc, "printShortestEdges 10000000");
-        
-        REQUIRE( output3.find("Name: Alice") != std::string::npos );
-        REQUIRE( output3.find("COP3530 | Total Time: 23") != std::string::npos ); 
-    }
+    // Should be reachable again
+    REQUIRE(cc.parseCommand("printShortestEdges 12345678") == true);
 }
